@@ -1,62 +1,10 @@
-import sys
 import torch
 from torch import nn
 from sklearn import datasets
 
 from src import utils
+from src import models
 from src import dataset
-
-
-_DEVICE = utils.get_device()
-
-
-class Meta(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super().__init__()
-        self._input_size = input_size
-        self._hidden_size = hidden_size
-        self._output_size = output_size
-
-        self._rnn = nn.RNN(self._input_size, self._hidden_size, None, batch_first=True)
-        self._hidden_state = torch.randn(1, self._input_size, self._hidden_size).to(_DEVICE)
-        self._fc = nn.Linear(self._hidden_size, self._output_size)
-
-    def forward(self, x):
-        """
-        Updates the knowledge of the meta-learner after seeing another example.
-
-        WARNING: x contains both the data and the label associated with it, they are concatenated.
-
-        :param x: an example from the training set
-        :return: the predicted weights of the prediction network
-        """
-        out, self._hidden_state = self._rnn(x, self._hidden_state)
-        out = self._fc(out)
-        return out
-
-
-class Predictor(nn.Module):
-    """
-    A very simple model to make sure that the overall system works.
-    y = ax + b
-    """
-    def __init__(self, input_size, output_size, weights: torch.Tensor, bias: torch.Tensor):
-        super().__init__()
-        self._input_size = input_size
-        self._output_size = output_size
-        self._fc = nn.Linear(self._input_size, self._output_size)
-        self._fc.weight = nn.Parameter(weights.T)
-        self._fc.bias = nn.Parameter(bias)
-
-    def forward(self, x: torch.Tensor):
-        """
-        Make a linear prediction from an input.
-        y = a * x + b
-
-        :param x: the input
-        :return: the prediction
-        """
-        return self._fc(x)
 
 
 def load_dataset():
@@ -64,14 +12,14 @@ def load_dataset():
     return iris['data'], iris['target']
 
 
-def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float = 0.01):
-    linear_model = Predictor(
+def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
+    linear_model = models.Predictor(
         dataset.input_size,
         dataset.output_size,
         torch.randn(dataset.input_size, dataset.output_size),
         torch.randn(dataset.output_size)
     )
-    linear_model.to(_DEVICE)
+    linear_model.to(utils.DEVICE)
 
     numel = utils.get_number_parameters(linear_model)
     print(f'[parameters]: {numel}')
@@ -93,10 +41,25 @@ def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float 
         c.p(loss.item())
         dataset.start_over()
 
+    print('[testing]...')
+    dataset.test()
+    i = 0
+    accuracy = 0.0  # mean between [0, 1]
+    for x, y in dataset:
+        output = linear_model(x)
+        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+        if i == 0:
+            accuracy = good
+            i += 1
+            continue
+        accuracy = (i / (i + 1)) * accuracy + good / (i + 1)
+        i += 1
+    print(f'[accuracy]: {accuracy * 100:.1f}%')
+
     return linear_model
 
 
-def train(meta_model, dataset: dataset.Dataset, epochs: int = 10):
+def train(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
     """
     The training procedure. It follows the following steps:
     1. samples an example and its label from the training set
@@ -116,5 +79,5 @@ def train(meta_model, dataset: dataset.Dataset, epochs: int = 10):
 
 if __name__ == '__main__':
     X, Y = load_dataset()
-    data = dataset.Dataset(X, Y, _DEVICE)
+    data = dataset.Dataset(X, Y, utils.DEVICE)
     train_predictor_alone(data)

@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 
+from src import utils
+
 
 class Dataset:
     def __init__(self, xs: np.ndarray, ys: np.ndarray, device, excluded: int = 2, k: float = .8):
@@ -17,26 +19,26 @@ class Dataset:
         """
         self.__device = device
 
-        self.__input_size = xs.shape[1]
-        if len(ys.shape) == 1:
-            ys = np.expand_dims(ys, axis=-1)
+        excluded_indices = ys == excluded
+        ys = utils.to_one_hot(ys)
 
+        self.__input_size = xs.shape[1]
         self.__output_size = ys.shape[1]
 
-        self._xs = xs[ys[:, 0] != excluded]
-        self._ys = ys[ys[:, 0] != excluded]
-        self._meta_xs = xs[ys[:, 0] == 2]
-        self._meta_ys = ys[ys[:, 0] == 2]
+        self._meta_xs = xs[excluded_indices]
+        self._meta_ys = ys[excluded_indices]
+        xs = xs[~excluded_indices]
+        ys = ys[~excluded_indices]
 
-        order = np.random.permutation(self._xs.shape[0])
-        self._xs = self._xs[order]
-        self._ys = self._ys[order]
+        order = np.random.permutation(xs.shape[0])
+        xs = xs[order]
+        ys = ys[order]
 
-        train_n: int = int(self._xs.shape[0] * k)
-        self._xs = self._xs[:train_n]
-        self._ys = self._ys[:train_n]
-        self._test_xs = self._xs[train_n:]
-        self._test_ys = self._ys[train_n:]
+        train_n: int = int(xs.shape[0] * k)
+        self._xs = xs[:train_n]
+        self._ys = ys[:train_n]
+        self._test_xs = xs[train_n:]
+        self._test_ys = ys[train_n:]
 
         self._xs = torch.from_numpy(self._xs).to(self.__device, dtype=torch.float32)
         self._ys = torch.from_numpy(self._ys).to(self.__device, dtype=torch.float32)
