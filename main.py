@@ -72,12 +72,10 @@ def train(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
 
     :return: both models trained
     """
-    for e in range(epochs):
-        for x, y in dataset:
-            pass
+    meta = models.Meta()
 
 
 if __name__ == '__main__':
     X, Y = load_dataset()
     data = dataset.Dataset(X, Y, utils.DEVICE)
-    train_predictor_alone(data)
+    print(data.input_size, data.output_size)
