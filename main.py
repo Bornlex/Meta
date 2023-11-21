@@ -82,13 +82,11 @@ def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
     print('[training]...')
     c = utils.Console(epochs)
     for e in range(epochs):
-        loss = None
+        meta_loss, predictor_loss = None, None
         for x, y in ds:
-            predictor_weights = meta(x, y)
-            meta.copy_weights_to_predictor(predictor_weights)
-            loss = meta.step(x, y)
+            meta_loss, predictor_loss = meta.step(x, y)
 
-        c.p(loss.item())
+        c.p(torch.sum(meta_loss).item())
         ds.start_over()
 
     print('[testing]...')

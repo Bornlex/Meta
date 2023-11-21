@@ -22,3 +22,8 @@ For the MVP, the model that predicts will be a very simple linear model.
 ### Meta model
 
 The meta model is based on the Recurrent Neural Network architecture.
+
+## TODO
+
+- [ ] Make sure that everything is really working as expected
+- [ ] Compute the overall number of flops

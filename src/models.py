@@ -44,11 +44,11 @@ class Predictor(nn.Module):
 
 
 class MetaLoss(nn.Module):
-    def __init__(self,):
+    def __init__(self):
         super().__init__()
 
     def forward(self, predicted: torch.Tensor, gradients: torch.Tensor):
-        return predicted
+        return predicted * gradients
 
 
 class Meta(nn.Module):
@@ -83,6 +83,7 @@ class Meta(nn.Module):
         self._fc = nn.Linear(self._hidden_size, meta_learning_output_size)
         self._tanh = nn.Tanh()
 
+        self._loss = MetaLoss()
         self._optimizer = torch.optim.SGD(self.parameters(), lr=.1)
 
     @property
@@ -113,7 +114,7 @@ class Meta(nn.Module):
         out = self._fc(out)
         return self._tanh(out)
 
-    def step(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    def step(self, x: torch.Tensor, y: torch.Tensor) -> [torch.Tensor, torch.Tensor]:
         """
         Updates the knowledge of the meta-learner after seeing one more example.
 
@@ -121,6 +122,9 @@ class Meta(nn.Module):
         :param y: its label
         :return: None
         """
+        predictor_weights = self(x, y)
+        self.copy_weights_to_predictor(predictor_weights)
+
         prediction = self._model(x)
         predictor_loss = self._predictor_loss(prediction, y)
         predictor_loss.backward()
@@ -130,11 +134,10 @@ class Meta(nn.Module):
             self._model.bias_grad.reshape((1, self._model.bias_grad.numel()))
         ), -1)
 
-        self._fc.weight.grad = self._model.weights_grad
-        self._fc.bias.grad = self._model.bias_grad
+        meta_loss = self._loss(predictor_weights, concatenated_gradients)
         self._optimizer.step()
 
-        return predictor_loss
+        return meta_loss, predictor_loss
 
 
 if __name__ == '__main__':
