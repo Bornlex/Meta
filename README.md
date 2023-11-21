@@ -1,5 +1,7 @@
 # Meta Learning
 
+The Notion page associated with the project is located at the following address: https://www.notion.so/narcissetechnologies/Meta-Learning-f00f0afc5c844b4bb38fdd1d178f8581?pvs=4.
+
 ## Motivations
 
 The goal of this project is to train a model that teaches another model some task.

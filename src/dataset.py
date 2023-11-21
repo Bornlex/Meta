@@ -85,3 +85,12 @@ class Dataset:
         a, b = xs[self.__index:self.__index + 1], ys[self.__index:self.__index + 1]
         self.__index += 1
         return a, b
+
+
+if __name__ == '__main__':
+    from sklearn import datasets
+
+    iris = datasets.load_iris()
+    X, Y = iris['data'], iris['target']
+    data = Dataset(X, Y, utils.DEVICE)
+    print(data.input_size, data.output_size)

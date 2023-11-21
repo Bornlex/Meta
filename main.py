@@ -12,12 +12,12 @@ def load_dataset():
     return iris['data'], iris['target']
 
 
-def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
+def train_predictor_alone(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
     linear_model = models.Predictor(
-        dataset.input_size,
-        dataset.output_size,
-        torch.randn(dataset.input_size, dataset.output_size),
-        torch.randn(dataset.output_size)
+        ds.input_size,
+        ds.output_size,
+        torch.randn(ds.input_size, ds.output_size),
+        torch.randn(ds.output_size)
     )
     linear_model.to(utils.DEVICE)
 
@@ -31,7 +31,7 @@ def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float 
     c = utils.Console(epochs)
     for e in range(epochs):
         loss = None
-        for x, y in dataset:
+        for x, y in ds:
             output = linear_model(x)
             loss = criterion(output, y)
             optimizer.zero_grad()
@@ -39,13 +39,13 @@ def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float 
             optimizer.step()
 
         c.p(loss.item())
-        dataset.start_over()
+        ds.start_over()
 
     print('[testing]...')
-    dataset.test()
+    ds.test()
     i = 0
     accuracy = 0.0  # mean between [0, 1]
-    for x, y in dataset:
+    for x, y in ds:
         output = linear_model(x)
         good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
         if i == 0:
@@ -59,7 +59,7 @@ def train_predictor_alone(dataset: dataset.Dataset, epochs: int = 10, lr: float 
     return linear_model
 
 
-def train(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
+def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
     """
     The training procedure. It follows the following steps:
     1. samples an example and its label from the training set
@@ -72,10 +72,42 @@ def train(dataset: dataset.Dataset, epochs: int = 10, lr: float = .1):
 
     :return: both models trained
     """
-    meta = models.Meta()
+    meta = models.Meta(
+        input_size=ds.input_size,
+        hidden_size=16,
+        output_size=ds.output_size,
+    )
+    meta.to(utils.DEVICE)
+
+    print('[training]...')
+    c = utils.Console(epochs)
+    for e in range(epochs):
+        loss = None
+        for x, y in ds:
+            predictor_weights = meta(x, y)
+            meta.copy_weights_to_predictor(predictor_weights)
+            loss = meta.step(x, y)
+
+        c.p(loss.item())
+        ds.start_over()
+
+    print('[testing]...')
+    ds.test()
+    i = 0
+    accuracy = 0.0  # mean between [0, 1]
+    for x, y in ds:
+        output = meta.predictor(x)
+        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+        if i == 0:
+            accuracy = good
+            i += 1
+            continue
+        accuracy = (i / (i + 1)) * accuracy + good / (i + 1)
+        i += 1
+    print(f'[accuracy]: {accuracy * 100:.1f}%')
 
 
 if __name__ == '__main__':
     X, Y = load_dataset()
     data = dataset.Dataset(X, Y, utils.DEVICE)
-    print(data.input_size, data.output_size)
+    train(data)
