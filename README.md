@@ -25,5 +25,6 @@ The meta model is based on the Recurrent Neural Network architecture.
 
 ## TODO
 
+- [ ] Tranform the weights prediction into a prediction of the variation of the weights that needs to be made
 - [ ] Make sure that everything is really working as expected
 - [ ] Compute the overall number of flops
