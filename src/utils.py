@@ -1,8 +1,14 @@
-import os
 import sys
 
 import numpy as np
 import torch
+
+
+def traced():
+    gt = getattr(sys, 'gettrace', None)
+    if gt is None:
+        return False
+    return gt() is not None
 
 
 class Console:
@@ -26,6 +32,9 @@ def get_number_parameters(model: torch.nn.Module) -> int:
 
 
 def get_device():
+    if traced():
+        return 'cpu'
+
     return (
         "cuda" if torch.cuda.is_available()
         else "mps"

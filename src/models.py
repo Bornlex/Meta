@@ -60,6 +60,19 @@ class MetaLoss(nn.Module):
         super().__init__()
 
     def forward(self, predicted: torch.Tensor, gradients: torch.Tensor):
+        """
+        Custom loss function in order to connect the loss of the predictor and
+        the weights predicted by the meta-learner.
+        We want that the derivative of this function is the gradient of the loss of the
+        predictor with respect to the output of the meta-learner.
+
+        So if we want a function whose derivative is 'a', the simplest is:
+        f(x) = a * x
+
+        :param predicted: the weights as predicted by the meta-learner
+        :param gradients: the gradients of the predictor with respect to its parameters
+        :return:
+        """
         return predicted * gradients
 
 
@@ -99,7 +112,9 @@ class Meta(nn.Module):
         self._tanh = nn.Tanh()
 
         self._loss = MetaLoss()
-        self._optimizer = torch.optim.SGD(self.parameters(), lr=self._lr, momentum=self._momentum)
+        self._optimizer = torch.optim.SGD(
+            [p for n, p in self.named_parameters() if '_model' not in n], lr=self._lr, momentum=self._momentum
+        )
 
     @property
     def predictor(self):
@@ -134,7 +149,7 @@ class Meta(nn.Module):
         Updates the knowledge of the meta-learner after seeing one more example.
 
         :param x: an example
-        :param y: its label\
+        :param y: its label
         :param update: whether to update the meta-learner or not
         :return: both the meta-loss and the predictor-loss
         """
