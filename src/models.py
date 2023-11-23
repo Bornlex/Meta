@@ -168,7 +168,9 @@ class Meta(nn.Module):
             self._model.bias_grad.reshape((1, self._model.bias_grad.numel()))
         ), -1)
 
-        meta_loss = self._loss(predictor_weights, concatenated_gradients)
+        # meta_loss = self._loss(predictor_weights, concatenated_gradients)
+        meta_loss = torch.sum(concatenated_gradients)
+        predictor_weights.grad = concatenated_gradients.clone()
         self._optimizer.step()
 
         return meta_loss, predictor_loss
