@@ -5,6 +5,7 @@ from sklearn import datasets
 from src import utils
 from src import models
 from src import dataset
+from src import visualisation
 
 
 def load_dataset():
@@ -12,7 +13,13 @@ def load_dataset():
     return iris['data'], iris['target']
 
 
-def train_predictor_alone(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
+def train_predictor_alone(
+    ds: dataset.Dataset,
+    epochs: int = 10,
+    lr: float = .1,
+    momentum: float = .9,
+    store: visualisation.TrainingStore = None
+):
     linear_model = models.Predictor(
         ds.input_size,
         ds.output_size,
@@ -24,7 +31,7 @@ def train_predictor_alone(ds: dataset.Dataset, epochs: int = 10, lr: float = .1)
     numel = utils.get_number_parameters(linear_model)
     print(f'[parameters]: {numel}')
 
-    optimizer = torch.optim.SGD(linear_model.parameters(), lr=lr)
+    optimizer = torch.optim.SGD(linear_model.parameters(), lr=lr, momentum=momentum)
     criterion = nn.MSELoss()
 
     print('[training]...')
@@ -37,6 +44,13 @@ def train_predictor_alone(ds: dataset.Dataset, epochs: int = 10, lr: float = .1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            store.add(
+                loss.item(),
+                linear_model.weights.tolist(),
+                linear_model.bias.tolist(),
+                linear_model.weights_grad.tolist(),
+                linear_model.bias_grad.tolist()
+            )
 
         c.p(loss.item())
         ds.start_over()
@@ -56,10 +70,33 @@ def train_predictor_alone(ds: dataset.Dataset, epochs: int = 10, lr: float = .1)
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
+    print('[meta]...')
+    ds.meta()
+    meta_accuracy = 0.0
+    first_shot = True
+    for x, y in ds:
+        output = linear_model(x)
+        if first_shot:
+            loss = criterion(output, y)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            first_shot = False
+            continue
+
+        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+        if i == 0:
+            meta_accuracy = good
+            i += 1
+            continue
+        meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
+        i += 1
+    print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
+
     return linear_model
 
 
-def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
+def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1, momentum: float = .9):
     """
     The training procedure. It follows the following steps:
     1. samples an example and its label from the training set
@@ -76,6 +113,8 @@ def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
         input_size=ds.input_size,
         hidden_size=16,
         output_size=ds.output_size,
+        lr=lr,
+        momentum=momentum
     )
     meta.to(utils.DEVICE)
 
@@ -104,8 +143,31 @@ def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1):
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
+    print('[meta]...')
+    ds.meta()
+    meta_accuracy = 0.0
+    first_shot = True
+    for x, y in ds:
+        if first_shot:
+            meta.step(x, y, update=False)
+            first_shot = False
+            continue
+
+        output = meta.predictor(x)
+        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+        if i == 0:
+            meta_accuracy = good
+            i += 1
+            continue
+        meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
+        i += 1
+    print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
+
 
 if __name__ == '__main__':
     X, Y = load_dataset()
     data = dataset.Dataset(X, Y, utils.DEVICE)
-    train(data)
+    metrics_store = visualisation.TrainingStore()
+    # train(data, lr=.05, momentum=.7)
+    train_predictor_alone(data, lr=.05, momentum=.7, store=metrics_store)
+    metrics_store.plot()

@@ -50,6 +50,7 @@ class Dataset:
         self.__index = 0
 
         self.__training = True
+        self.__meta = False
 
     @property
     def input_size(self) -> int:
@@ -65,6 +66,9 @@ class Dataset:
     def train(self):
         self.__training = True
 
+    def meta(self):
+        self.__meta = True
+
     def start_over(self):
         self.__index = 0
 
@@ -72,12 +76,16 @@ class Dataset:
         return self
 
     def __next__(self):
-        if self.__training:
-            xs = self._xs
-            ys = self._ys
+        if self.__meta:
+            xs = self._meta_xs
+            ys = self._meta_ys
         else:
-            xs = self._test_xs
-            ys = self._test_ys
+            if self.__training:
+                xs = self._xs
+                ys = self._ys
+            else:
+                xs = self._test_xs
+                ys = self._test_ys
 
         if self.__index >= xs.shape[0]:
             raise StopIteration
