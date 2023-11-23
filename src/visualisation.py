@@ -24,6 +24,10 @@ class TrainingStore:
         self._weights_grad.append(weights_grad)
         self._bias_grad.append(bias_grad)
 
+    @staticmethod
+    def _to_series(data: List[List[float]]):
+        return [list(zip(*data))[i] for i in range(len(data[0]))]
+
     def plot(self):
         """
         Display important metrics about the training.
@@ -34,16 +38,16 @@ class TrainingStore:
         ax[0, 0].plot(self._losses)
         ax[0, 0].set_title('loss')
 
-        l, s = len(self._weights), len(self._weights[0])
-        for i in range(s):
-            series = [self._weights[j][i] for j in range(l)]
+        for series in self._to_series(self._weights):
             ax[0, 1].plot(series)
         ax[0, 1].set_title('weights')
 
-        l, s = len(self._bias), len(self._bias[0])
-        for i in range(s):
-            series = [self._bias[j][i] for j in range(l)]
+        for series in self._to_series(self._bias):
             ax[1, 0].plot(series)
         ax[1, 0].set_title('bias')
+
+        for series in self._to_series(self._weights_grad):
+            ax[1, 1].plot(series)
+        ax[1, 1].set_title('weights gradients')
 
         plt.show()

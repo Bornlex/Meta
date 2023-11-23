@@ -96,7 +96,13 @@ def train_predictor_alone(
     return linear_model
 
 
-def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1, momentum: float = .9):
+def train(
+    ds: dataset.Dataset,
+    epochs: int = 10,
+    lr: float = .1,
+    momentum: float = .9,
+    store: visualisation.TrainingStore = None
+):
     """
     The training procedure. It follows the following steps:
     1. samples an example and its label from the training set
@@ -124,6 +130,13 @@ def train(ds: dataset.Dataset, epochs: int = 10, lr: float = .1, momentum: float
         meta_loss, predictor_loss = None, None
         for x, y in ds:
             meta_loss, predictor_loss = meta.step(x, y)
+            store.add(
+                predictor_loss.item(),
+                meta.predictor.weights.tolist(),
+                meta.predictor.bias.tolist(),
+                meta.predictor.weights_grad.tolist(),
+                meta.predictor.bias_grad.tolist()
+            )
 
         c.p(torch.sum(meta_loss).item())
         ds.start_over()
@@ -168,6 +181,6 @@ if __name__ == '__main__':
     X, Y = load_dataset()
     data = dataset.Dataset(X, Y, utils.DEVICE)
     metrics_store = visualisation.TrainingStore()
-    # train(data, lr=.05, momentum=.7)
-    train_predictor_alone(data, lr=.05, momentum=.7, store=metrics_store)
+    train(data, lr=.05, momentum=.7, store=metrics_store)
+    # train_predictor_alone(data, lr=.05, momentum=.7, store=metrics_store)
     metrics_store.plot()
