@@ -1,7 +1,11 @@
 import torch
 from torch import nn
+from torchviz import make_dot
 
 from src import utils
+
+
+torch.autograd.set_detect_anomaly(True)
 
 
 class Predictor(nn.Module):
@@ -59,21 +63,13 @@ class MetaLoss(nn.Module):
     def __init__(self):
         super().__init__()
 
-    def forward(self, predicted: torch.Tensor, gradients: torch.Tensor):
-        """
-        Custom loss function in order to connect the loss of the predictor and
-        the weights predicted by the meta-learner.
-        We want that the derivative of this function is the gradient of the loss of the
-        predictor with respect to the output of the meta-learner.
-
-        So if we want a function whose derivative is 'a', the simplest is:
-        f(x) = a * x
-
-        :param predicted: the weights as predicted by the meta-learner
-        :param gradients: the gradients of the predictor with respect to its parameters
-        :return:
-        """
-        return predicted * gradients
+    def forward(
+        self,
+        current_predictor_loss: torch.Tensor,
+        previous_predictor_loss: torch.Tensor,
+        weights_update: torch.Tensor
+    ):
+        return torch.mean((current_predictor_loss - previous_predictor_loss) * weights_update)
 
 
 class Meta(nn.Module):
@@ -107,7 +103,7 @@ class Meta(nn.Module):
         meta_learning_output_size = self._model.numel
 
         self._rnn = nn.RNN(meta_learning_input_size, self._hidden_size, batch_first=True)
-        self._hidden_state = None
+        self._hidden_state = torch.zeros(1, self._hidden_size, device=utils.DEVICE)
         self._fc = nn.Linear(self._hidden_size, meta_learning_output_size)
         self._tanh = nn.Tanh()
 
@@ -115,25 +111,31 @@ class Meta(nn.Module):
         self._optimizer = torch.optim.SGD(
             [p for n, p in self.named_parameters() if '_model' not in n], lr=self._lr, momentum=self._momentum
         )
+        self._losses = []
+
+    def _detach(self, var: torch.Tensor):
+        v = torch.autograd.Variable(var.data, requires_grad=True)
+        v.retain_grad()
+        return v
 
     @property
     def predictor(self):
         return self._model
 
-    def copy_weights_to_predictor(self, weights: torch.Tensor):
+    def update_predictor_weights(self, weights: torch.Tensor):
         """
-        Copies the weights to the predictor.
-        :param weights: the weights that have been predicted
+        Update the weights of the predictor.
+        :param weights: the weights update that has been predicted
         :return: None
         """
         already_allocated = 0
-        for p in self._model.parameters():
-            p.data = weights[:, already_allocated:already_allocated + p.numel()].data.reshape(p.shape)
+        for n, p in self._model.named_parameters():
+            p.data += weights[:, already_allocated:already_allocated + p.numel()].data.reshape(p.shape)
             already_allocated += p.numel()
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
         """
-        Predicts the weights of the predictor.
+        Predicts the variation of the predictor's weights.
 
         :param x: an example
         :param y: its label
@@ -141,6 +143,7 @@ class Meta(nn.Module):
         """
         input_tensor = torch.cat((x, y), -1)
         out, self._hidden_state = self._rnn(input_tensor, self._hidden_state)
+        self._hidden_state = self._detach(self._hidden_state)
         out = self._fc(out)
         return self._tanh(out)
 
@@ -153,24 +156,28 @@ class Meta(nn.Module):
         :param update: whether to update the meta-learner or not
         :return: both the meta-loss and the predictor-loss
         """
-        predictor_weights = self(x, y)
-        self.copy_weights_to_predictor(predictor_weights)
+        weights_update = self(x, y)
+        self.update_predictor_weights(weights_update)
 
         if not update:
             return None, None
 
         prediction = self._model(x)
         predictor_loss = self._predictor_loss(prediction, y)
-        predictor_loss.backward()
+        predictor_loss.backward(retain_graph=True)
 
-        concatenated_gradients = torch.cat((
-            self._model.weights_grad.reshape((1, self._model.weights_grad.numel())),
-            self._model.bias_grad.reshape((1, self._model.bias_grad.numel()))
-        ), -1)
+        self._losses.append(predictor_loss.detach())
 
-        # meta_loss = self._loss(predictor_weights, concatenated_gradients)
-        meta_loss = torch.sum(concatenated_gradients)
-        predictor_weights.grad = concatenated_gradients.clone()
+        if len(self._losses) <= 1:
+            return None, predictor_loss
+
+        self._optimizer.zero_grad()
+        meta_loss = self._loss(
+            self._losses[-1],
+            self._losses[-2],
+            weights_update
+        )
+        meta_loss.backward(retain_graph=True)
         self._optimizer.step()
 
         return meta_loss, predictor_loss

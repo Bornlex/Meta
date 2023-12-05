@@ -134,8 +134,8 @@ def train(
                 predictor_loss.item(),
                 meta.predictor.weights.tolist(),
                 meta.predictor.bias.tolist(),
-                meta.predictor.weights_grad.tolist(),
-                meta.predictor.bias_grad.tolist()
+                None, #meta.predictor.weights_grad.tolist(),
+                None, #meta.predictor.bias_grad.tolist()
             )
 
         c.p(torch.sum(meta_loss).item())

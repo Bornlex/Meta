@@ -21,8 +21,10 @@ class TrainingStore:
         self._losses.append(loss)
         self._weights.append(weights)
         self._bias.append(bias)
-        self._weights_grad.append(weights_grad)
-        self._bias_grad.append(bias_grad)
+        if weights_grad is not None:
+            self._weights_grad.append(weights_grad)
+        if bias_grad is not None:
+            self._bias_grad.append(bias_grad)
 
     @staticmethod
     def _to_series(data: List[List[float]]):
@@ -46,8 +48,9 @@ class TrainingStore:
             ax[1, 0].plot(series)
         ax[1, 0].set_title('bias')
 
-        for series in self._to_series(self._weights_grad):
-            ax[1, 1].plot(series)
-        ax[1, 1].set_title('weights gradients')
+        if len(self._weights_grad) > 0:
+            for series in self._to_series(self._weights_grad):
+                ax[1, 1].plot(series)
+            ax[1, 1].set_title('weights gradients')
 
         plt.show()
