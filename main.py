@@ -106,6 +106,7 @@ def train_predictor_alone(
         meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
         i += 1
     print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
+    metrics_store.plot()
 
     return linear_model
 
@@ -144,15 +145,17 @@ def train(
         meta_loss, predictor_loss = None, None
         for x, y in ds:
             predictor_losses = []
+            meta_losses = []
             for _ in range(1):
                 meta_loss, predictor_loss = meta.step(x, y)
+                if meta_loss is not None:
+                    meta_losses.append(meta_loss.item())
                 predictor_losses.append(predictor_loss.item())
-            store.add(
+            store.add_meta(
                 np.mean(predictor_losses),
+                np.mean(meta_losses),
                 meta.predictor.weights.tolist(),
                 meta.predictor.bias.tolist(),
-                None, #meta.predictor.weights_grad.tolist(),
-                None, #meta.predictor.bias_grad.tolist()
             )
 
         c.p(torch.sum(predictor_loss).item())
@@ -192,6 +195,9 @@ def train(
         meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
         i += 1
     print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
+    metrics_store.plot_meta()
+
+    return meta
 
 
 if __name__ == '__main__':
@@ -200,4 +206,3 @@ if __name__ == '__main__':
     metrics_store = visualisation.TrainingStore()
     train(data, lr=.05, momentum=.7, store=metrics_store)
     # train_predictor_alone(data, epochs=20, lr=.01, momentum=.8, store=metrics_store, batch_size=16)
-    metrics_store.plot()
