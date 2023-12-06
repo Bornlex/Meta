@@ -1,10 +1,10 @@
 import torch
 from torch import nn
-from torchviz import make_dot
 
 from src import utils
 
 
+torch.manual_seed(42)
 torch.autograd.set_detect_anomaly(True)
 
 
@@ -13,15 +13,18 @@ class Predictor(nn.Module):
     A very simple model to make sure that the overall system works.
     y = softmax(ax + b)
     """
-    def __init__(self, input_size, output_size, weights: torch.Tensor, bias: torch.Tensor):
+    def __init__(self, input_size: int, hidden_size: int, output_size: int, weights: torch.Tensor, bias: torch.Tensor):
         super().__init__()
         self._input_size = input_size
+        self._hidden_size = hidden_size
         self._output_size = output_size
-        self._fc = nn.Linear(self._input_size, self._output_size)
+        self._fc1 = nn.Linear(self._input_size, self._hidden_size)
+        self._fc2 = nn.Linear(self._hidden_size, self._output_size)
+        self._relu = nn.ReLU()
         self._soft = nn.Softmax(dim=1)
 
-        self._fc.weight = nn.Parameter(weights.T)
-        self._fc.bias = nn.Parameter(bias)
+        #self._fc1.weight = nn.Parameter(weights.T)
+        #self._fc1.bias = nn.Parameter(bias)
 
     @property
     def numel(self):
@@ -29,19 +32,19 @@ class Predictor(nn.Module):
 
     @property
     def weights(self):
-        return self._fc.weight.data.clone()
+        return self._fc1.weight.data.clone()
 
     @property
     def bias(self):
-        return self._fc.bias.data.clone()
+        return self._fc1.bias.data.clone()
 
     @property
     def weights_grad(self):
-        return self._fc.weight.grad.clone()
+        return self._fc1.weight.grad.clone()
 
     @property
     def bias_grad(self):
-        return self._fc.bias.grad.clone()
+        return self._fc1.bias.grad.clone()
 
     def forward(self, x: torch.Tensor):
         """
@@ -51,7 +54,9 @@ class Predictor(nn.Module):
         :param x: the input
         :return: the prediction
         """
-        x = self._fc(x)
+        x = self._fc1(x)
+        x = self._relu(x)
+        x = self._fc2(x)
         return self._soft(x)
 
 
@@ -69,7 +74,9 @@ class MetaLoss(nn.Module):
         previous_predictor_loss: torch.Tensor,
         weights_update: torch.Tensor
     ):
-        return torch.mean((current_predictor_loss - previous_predictor_loss) * weights_update)
+        return torch.mean(
+            (current_predictor_loss - previous_predictor_loss) * weights_update
+        )
 
 
 class Meta(nn.Module):
@@ -92,6 +99,7 @@ class Meta(nn.Module):
 
         self._model = Predictor(
             self._input_size,
+            2 * self._input_size,
             self._output_size,
             torch.randn(self._input_size, self._output_size),
             torch.randn(self._output_size)
@@ -113,7 +121,8 @@ class Meta(nn.Module):
         )
         self._losses = []
 
-    def _detach(self, var: torch.Tensor):
+    @staticmethod
+    def _detach(var: torch.Tensor):
         v = torch.autograd.Variable(var.data, requires_grad=True)
         v.retain_grad()
         return v
@@ -177,7 +186,7 @@ class Meta(nn.Module):
             self._losses[-2],
             weights_update
         )
-        meta_loss.backward(retain_graph=True)
+        meta_loss.backward()
         self._optimizer.step()
 
         return meta_loss, predictor_loss

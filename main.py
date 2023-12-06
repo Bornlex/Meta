@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+import numpy as np
 from sklearn import datasets
 
 from src import utils
@@ -18,10 +19,12 @@ def train_predictor_alone(
     epochs: int = 10,
     lr: float = .1,
     momentum: float = .9,
-    store: visualisation.TrainingStore = None
+    store: visualisation.TrainingStore = None,
+    batch_size: int = 8
 ):
     linear_model = models.Predictor(
         ds.input_size,
+        16,
         ds.output_size,
         torch.randn(ds.input_size, ds.output_size),
         torch.randn(ds.output_size)
@@ -38,19 +41,30 @@ def train_predictor_alone(
     c = utils.Console(epochs)
     for e in range(epochs):
         loss = None
+        xs = []
+        ys = []
         for x, y in ds:
-            output = linear_model(x)
-            loss = criterion(output, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            store.add(
-                loss.item(),
-                linear_model.weights.tolist(),
-                linear_model.bias.tolist(),
-                linear_model.weights_grad.tolist(),
-                linear_model.bias_grad.tolist()
-            )
+            xs.append(x)
+            ys.append(y)
+
+            if len(xs) == batch_size:
+                optimizer.zero_grad()
+                xs = torch.reshape(torch.stack(xs), (batch_size, ds.input_size))
+                ys = torch.reshape(torch.stack(ys), (batch_size, ds.output_size))
+                output = linear_model(xs)
+                loss = criterion(output, ys)
+                loss.backward()
+                optimizer.step()
+                store.add(
+                    loss.item(),
+                    linear_model.weights.tolist(),
+                    linear_model.bias.tolist(),
+                    linear_model.weights_grad.tolist(),
+                    linear_model.bias_grad.tolist()
+                )
+
+                xs = []
+                ys = []
 
         c.p(loss.item())
         ds.start_over()
@@ -129,16 +143,19 @@ def train(
     for e in range(epochs):
         meta_loss, predictor_loss = None, None
         for x, y in ds:
-            meta_loss, predictor_loss = meta.step(x, y)
+            predictor_losses = []
+            for _ in range(1):
+                meta_loss, predictor_loss = meta.step(x, y)
+                predictor_losses.append(predictor_loss.item())
             store.add(
-                predictor_loss.item(),
+                np.mean(predictor_losses),
                 meta.predictor.weights.tolist(),
                 meta.predictor.bias.tolist(),
                 None, #meta.predictor.weights_grad.tolist(),
                 None, #meta.predictor.bias_grad.tolist()
             )
 
-        c.p(torch.sum(meta_loss).item())
+        c.p(torch.sum(predictor_loss).item())
         ds.start_over()
 
     print('[testing]...')
@@ -182,5 +199,5 @@ if __name__ == '__main__':
     data = dataset.Dataset(X, Y, utils.DEVICE)
     metrics_store = visualisation.TrainingStore()
     train(data, lr=.05, momentum=.7, store=metrics_store)
-    # train_predictor_alone(data, lr=.05, momentum=.7, store=metrics_store)
+    # train_predictor_alone(data, epochs=20, lr=.01, momentum=.8, store=metrics_store, batch_size=16)
     metrics_store.plot()
