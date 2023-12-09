@@ -79,6 +79,18 @@ class MetaLoss(nn.Module):
         )
 
 
+class PseudoLoss(nn.Module):
+    """
+    This loss function is made only for propagating the gradient
+    from the predictor to the meta-learner.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, network_output: torch.Tensor):
+        return network_output.sum()
+
+
 class Meta(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, lr: float = .1, momentum: float = .9):
         """
@@ -116,10 +128,12 @@ class Meta(nn.Module):
         self._tanh = nn.Tanh()
 
         self._loss = MetaLoss()
+        self._pseudo_loss = PseudoLoss()
         self._optimizer = torch.optim.SGD(
             [p for n, p in self.named_parameters() if '_model' not in n], lr=self._lr, momentum=self._momentum
         )
         self._losses = []
+        self._gradients = []
 
     @staticmethod
     def _detach(var: torch.Tensor):
@@ -141,6 +155,13 @@ class Meta(nn.Module):
         for n, p in self._model.named_parameters():
             p.data += weights[:, already_allocated:already_allocated + p.numel()].data.reshape(p.shape)
             already_allocated += p.numel()
+
+    def get_gradients_from_predictor(self) -> torch.Tensor:
+        """
+        Get the gradients of the predictor's weights.
+        :return:
+        """
+        return torch.cat([p.grad.flatten() for p in self._model.parameters()])
 
     def forward(self, x: torch.Tensor, y: torch.Tensor):
         """
@@ -181,15 +202,13 @@ class Meta(nn.Module):
             return None, predictor_loss
 
         self._optimizer.zero_grad()
-        meta_loss = self._loss(
-            self._losses[-1],
-            self._losses[-2],
-            weights_update
-        )
-        meta_loss.backward()
+        pseudo_loss = self._pseudo_loss(weights_update)
+        gradients = self.get_gradients_from_predictor()
+        weights_update.grad = gradients.reshape(weights_update.shape)
+        pseudo_loss.backward()
         self._optimizer.step()
 
-        return meta_loss, predictor_loss
+        return pseudo_loss, predictor_loss
 
 
 if __name__ == '__main__':

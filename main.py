@@ -204,5 +204,5 @@ if __name__ == '__main__':
     X, Y = load_dataset()
     data = dataset.Dataset(X, Y, utils.DEVICE)
     metrics_store = visualisation.TrainingStore()
-    train(data, lr=.05, momentum=.7, store=metrics_store)
+    train(data, lr=.05, momentum=.9, store=metrics_store)
     # train_predictor_alone(data, epochs=20, lr=.01, momentum=.8, store=metrics_store, batch_size=16)
