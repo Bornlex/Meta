@@ -141,6 +141,17 @@ class Meta(nn.Module):
         v.retain_grad()
         return v
 
+    def _retropropagate(self, output_gradients: torch.Tensor):
+        """
+        torch.autograd.backward(weights_update, )
+
+        torch.autograd.grad(weights_update, self._fc.weight, (self._gradients[-1] - self._gradients[-2]).reshape(weights_update.shape))
+
+        :param output_gradients:
+        :return:
+        """
+        pass
+
     @property
     def predictor(self):
         return self._model
@@ -197,18 +208,18 @@ class Meta(nn.Module):
         predictor_loss.backward(retain_graph=True)
 
         self._losses.append(predictor_loss.detach())
+        gradients = self.get_gradients_from_predictor()
+        self._gradients.append(gradients)
 
         if len(self._losses) <= 1:
             return None, predictor_loss
 
         self._optimizer.zero_grad()
-        pseudo_loss = self._pseudo_loss(weights_update)
-        gradients = self.get_gradients_from_predictor()
-        weights_update.grad = gradients.reshape(weights_update.shape)
-        pseudo_loss.backward()
+        gradients = (self._gradients[-1] - self._gradients[-2]).reshape(weights_update.shape)
+        torch.autograd.backward(weights_update, gradients)
         self._optimizer.step()
 
-        return pseudo_loss, predictor_loss
+        return None, predictor_loss
 
 
 if __name__ == '__main__':
