@@ -95,6 +95,52 @@ class Dataset:
         return a, b
 
 
+def kolmogorov_dataloader(n_batches, batch_size, length):
+    """
+    Each sequence returned contains 2 channels. The first channel is a sequence of random numbers. The second channel
+    contains the delimiter.
+
+    :param n_batches: the number of batches to yield
+    :param batch_size: the size of each batch
+    :param length: the length of the sequence
+    :return: a generator
+    """
+    for b in range(n_batches):
+        sequence = np.random.randint(0, 10, (batch_size, length, 2))
+        sequence[:, :, 1] = 0
+        sequence[:, -1, 1] = 1
+        inp = torch.from_numpy(sequence).float()
+        out = inp.clone()
+
+        yield inp, out
+
+
+def kolmogorov_dataloader_simple(n_batches, length):
+    """
+    This function is a copy of the previous function but with simpler tasks.
+    It involves increasing or decreasing sequences.
+
+    Also, the batch size if fixed to 8.
+    """
+    seed = np.random.randint(0, 10)
+
+    for b in range(n_batches):
+        sequence = np.zeros((8, length, 2))
+        sequence[0, :, 0] = [seed + i for i in range(length)]
+        sequence[1, :, 0] = [seed + 2 * i for i in range(length)]
+        sequence[2, :, 0] = [seed + i ** 2 for i in range(length)]
+        sequence[3, :, 0] = [seed - i for i in range(length)]
+        sequence[4, :, 0] = [seed - 4 * i for i in range(length)]
+        sequence[5, :, 0] = [seed - 2 * i for i in range(length)]
+        sequence[6, :, 0] = [seed * i for i in range(length)]
+        sequence[7, :, 0] = [2 * seed - i for i in range(length)]
+        sequence[:, -1, 1] = 1
+        inp = torch.from_numpy(sequence).float()
+        out = inp.clone()
+
+        yield inp, out
+
+
 if __name__ == '__main__':
     from sklearn import datasets
 
@@ -102,3 +148,6 @@ if __name__ == '__main__':
     X, Y = iris['data'], iris['target']
     data = Dataset(X, Y, utils.DEVICE)
     print(data.input_size, data.output_size)
+
+    for i, o in kolmogorov_dataloader_simple(2, 10):
+        print(i, o)
