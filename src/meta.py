@@ -12,20 +12,15 @@ torch.autograd.set_detect_anomaly(True)
 class Predictor(nn.Module):
     """
     A very simple model to make sure that the overall system works.
-    y = softmax(ax + b)
     """
-    def __init__(self, input_size: int, hidden_size: int, output_size: int, weights: torch.Tensor, bias: torch.Tensor):
+    def __init__(self, input_size: int, hidden_size: int, output_size: int):
         super().__init__()
         self._input_size = input_size
         self._hidden_size = hidden_size
         self._output_size = output_size
         self._fc1 = nn.Linear(self._input_size, self._hidden_size)
-        self._fc2 = nn.Linear(self._hidden_size, self._output_size)
-        self._relu = nn.ReLU()
-        self._soft = nn.Softmax(dim=1)
-
-        #self._fc1.weight = nn.Parameter(weights.T)
-        #self._fc1.bias = nn.Parameter(bias)
+        self._fc2 = nn.Linear(self._hidden_size, self._hidden_size // 2)
+        self._fc3 = nn.Linear(self._hidden_size // 2, self._output_size)
 
     @property
     def numel(self):
@@ -49,16 +44,16 @@ class Predictor(nn.Module):
 
     def forward(self, x: torch.Tensor):
         """
-        Make a linear prediction from an input.
-        y = softmax(a * x + b)
+        Make a prediction from an input.
 
         :param x: the input
         :return: the prediction
         """
-        x = self._fc1(x)
-        x = self._relu(x)
-        x = self._fc2(x)
-        return self._soft(x)
+        x = torch.relu(self._fc1(x))
+        x = torch.relu(self._fc2(x))
+        x = torch.log_softmax(self._fc3(x), dim=1)
+
+        return x
 
 
 class MetaLoss(nn.Module):
@@ -102,11 +97,9 @@ class Meta(nn.Module):
             self._input_size,
             2 * self._input_size,
             self._output_size,
-            torch.randn(self._input_size, self._output_size),
-            torch.randn(self._output_size)
         )
         self._model.to(utils.DEVICE)
-        self._predictor_loss = nn.MSELoss()
+        self._predictor_loss = nn.NLLLoss()
 
         meta_learning_input_size = self._input_size + self._output_size
         meta_learning_output_size = self._model.numel
@@ -186,13 +179,15 @@ class Meta(nn.Module):
         :return: both the meta-loss and the predictor-loss
         """
         weights = self(x, y)
+        if weights.shape[0] > 1:
+            weights = torch.mean(weights, dim=0, keepdim=True)
         self.update_predictor_weights(weights)
 
         if not update:
             return None, None
 
         prediction = self._model(x)
-        predictor_loss = self._predictor_loss(prediction, y)
+        predictor_loss = self._predictor_loss(prediction, torch.argmax(y, -1))
         predictor_loss.backward(retain_graph=True)
 
         self._losses.append(predictor_loss.detach())

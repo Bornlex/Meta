@@ -21,7 +21,7 @@ class Console:
         percentage = self.__epoch / self.__epochs * 100
         sys.stdout.write('\r')
         sys.stdout.flush()
-        sys.stdout.write(f'[{percentage:.0f}%][{loss:.4f}]: {" ".join(["." for _ in range(self.__epoch)])}')
+        sys.stdout.write(f'[{percentage:.0f}%][{loss:.8f}]: {" ".join(["." for _ in range(self.__epoch)])}')
         sys.stdout.flush()
         if self.__epoch == self.__epochs:
             sys.stdout.write('\n')

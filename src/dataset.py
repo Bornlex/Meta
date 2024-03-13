@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+from torchvision import datasets, transforms
 
 from src import utils
 
@@ -93,6 +94,38 @@ class Dataset:
         a, b = xs[self.__index:self.__index + 1], ys[self.__index:self.__index + 1]
         self.__index += 1
         return a, b
+
+
+class MNIST:
+    def __init__(self, batch_size: int, device):
+        self._device = device
+        self._transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5,), (0.5,)),
+            transforms.Lambda(lambda x: torch.flatten(x)),
+        ])
+        self._train_set = datasets.MNIST('~/.pytorch/mnist/', download=True, train=True, transform=self._transform)
+        self._train_loader = torch.utils.data.DataLoader(self._train_set, batch_size=batch_size, shuffle=True)
+        self._test_set = datasets.MNIST('~/.pytorch/mnist/', download=True, train=False, transform=self._transform)
+        self._test_loader = torch.utils.data.DataLoader(self._test_set, batch_size=batch_size, shuffle=True)
+
+    @property
+    def input_size(self) -> int:
+        return 28 * 28
+
+    @property
+    def output_size(self) -> int:
+        return 10
+
+    def train(self):
+        x, y = next(iter(self._train_loader))
+        y = torch.eye(self.output_size)[y].to(self._device)
+        return x.to(self._device), y
+
+    def test(self):
+        x, y = next(iter(self._test_loader))
+        y = torch.eye(self.output_size)[y].to(self._device)
+        return x.to(self._device), y
 
 
 def kolmogorov_dataloader(n_batches, batch_size, length):

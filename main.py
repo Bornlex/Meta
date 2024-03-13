@@ -1,7 +1,7 @@
+import numpy.random
 import torch
 from torch import nn
 import numpy as np
-from sklearn import datasets
 
 from src import utils
 from src import meta
@@ -9,25 +9,21 @@ from src import dataset
 from src import visualisation
 
 
-def load_dataset():
-    iris = datasets.load_iris()
-    return iris['data'], iris['target']
+numpy.random.seed(42)
 
 
 def train_predictor_alone(
-        ds: dataset.Dataset,
+        ds: dataset.MNIST,
         epochs: int = 10,
+        iterations: int = 100,
         lr: float = .1,
         momentum: float = .9,
         store: visualisation.TrainingStore = None,
-        batch_size: int = 8
 ):
     linear_model = meta.Predictor(
         ds.input_size,
         16,
         ds.output_size,
-        torch.randn(ds.input_size, ds.output_size),
-        torch.randn(ds.output_size)
     )
     linear_model.to(utils.DEVICE)
 
@@ -35,47 +31,32 @@ def train_predictor_alone(
     print(f'[parameters]: {numel}')
 
     optimizer = torch.optim.SGD(linear_model.parameters(), lr=lr, momentum=momentum)
-    criterion = nn.MSELoss()
+    criterion = nn.NLLLoss()
 
     print('[training]...')
     c = utils.Console(epochs)
     for e in range(epochs):
         loss = None
-        xs = []
-        ys = []
-        for x, y in ds:
-            xs.append(x)
-            ys.append(y)
-
-            if len(xs) == batch_size:
-                optimizer.zero_grad()
-                xs = torch.reshape(torch.stack(xs), (batch_size, ds.input_size))
-                ys = torch.reshape(torch.stack(ys), (batch_size, ds.output_size))
-                output = linear_model(xs)
-                loss = criterion(output, ys)
-                loss.backward()
-                optimizer.step()
-                store.add(
-                    loss.item(),
-                    linear_model.weights.tolist(),
-                    linear_model.bias.tolist(),
-                    linear_model.weights_grad.tolist(),
-                    linear_model.bias_grad.tolist()
-                )
-
-                xs = []
-                ys = []
+        for _ in range(iterations):
+            xs, ys = ds.train()
+            optimizer.zero_grad()
+            output = linear_model(xs)
+            loss = criterion(output, torch.argmax(ys, -1))
+            loss.backward()
+            optimizer.step()
+            store.add(
+                loss.item(),
+            )
 
         c.p(loss.item())
-        ds.start_over()
 
     print('[testing]...')
-    ds.test()
     i = 0
-    accuracy = 0.0  # mean between [0, 1]
-    for x, y in ds:
-        output = linear_model(x)
-        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+    accuracy = 0.0
+    for _ in range(iterations):
+        xs, ys = ds.test()
+        output = linear_model(xs)
+        good = torch.mean((torch.argmax(output, -1) == torch.argmax(ys, -1)).float())
         if i == 0:
             accuracy = good
             i += 1
@@ -84,36 +65,15 @@ def train_predictor_alone(
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
-    print('[meta]...')
-    ds.meta()
-    meta_accuracy = 0.0
-    first_shot = True
-    for x, y in ds:
-        output = linear_model(x)
-        if first_shot:
-            loss = criterion(output, y)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            first_shot = False
-            continue
-
-        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
-        if i == 0:
-            meta_accuracy = good
-            i += 1
-            continue
-        meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
-        i += 1
-    print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
     metrics_store.plot()
 
     return linear_model
 
 
 def train(
-        ds: dataset.Dataset,
+        ds: dataset.MNIST,
         epochs: int = 10,
+        iterations: int = 100,
         lr: float = .1,
         momentum: float = .9,
         store: visualisation.TrainingStore = None
@@ -143,31 +103,29 @@ def train(
     c = utils.Console(epochs)
     for e in range(epochs):
         meta_loss, predictor_loss = None, None
-        for x, y in ds:
+        for _ in range(iterations):
+            xs, ys = ds.train()
             predictor_losses = []
             meta_losses = []
             for _ in range(1):
-                meta_loss, predictor_loss = ml.step(x, y)
+                meta_loss, predictor_loss = ml.step(xs, ys)
                 if meta_loss is not None:
                     meta_losses.append(meta_loss.item())
                 predictor_losses.append(predictor_loss.item())
             store.add_meta(
                 np.mean(predictor_losses),
                 np.mean(meta_losses),
-                ml.predictor.weights.tolist(),
-                ml.predictor.bias.tolist(),
             )
 
         c.p(torch.sum(predictor_loss).item())
-        ds.start_over()
 
     print('[testing]...')
-    ds.test()
     i = 0
-    accuracy = 0.0  # mean between [0, 1]
-    for x, y in ds:
-        output = ml.predictor(x)
-        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
+    accuracy = 0.0
+    for _ in range(iterations):
+        xs, ys = ds.test()
+        output = ml.predictor(xs)
+        good = torch.mean((torch.argmax(output, -1) == torch.argmax(ys, -1)).float())
         if i == 0:
             accuracy = good
             i += 1
@@ -176,8 +134,8 @@ def train(
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
+    """
     print('[meta]...')
-    ds.meta()
     meta_accuracy = 0.0
     first_shot = True
     for x, y in ds:
@@ -195,14 +153,22 @@ def train(
         meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
         i += 1
     print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
+    """
+
     metrics_store.plot_meta()
 
     return meta
 
 
 if __name__ == '__main__':
-    X, Y = load_dataset()
-    data = dataset.Dataset(X, Y, utils.DEVICE)
+    epochs = 10
+    batch_size = 8
+    lr = .01
+    momentum = .8
+    iterations = 50
+
+    data = dataset.MNIST(batch_size, utils.DEVICE)
     metrics_store = visualisation.TrainingStore()
-    train(data, lr=.05, momentum=.9, store=metrics_store)
-    # train_predictor_alone(data, epochs=20, lr=.01, momentum=.8, store=metrics_store, batch_size=16)
+
+    train(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
+    # train_predictor_alone(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
