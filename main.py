@@ -65,7 +65,7 @@ def train_predictor_alone(
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
-    metrics_store.plot()
+    # metrics_store.plot()
 
     return linear_model
 
@@ -134,30 +134,9 @@ def train(
         i += 1
     print(f'[accuracy]: {accuracy * 100:.1f}%')
 
-    """
-    print('[meta]...')
-    meta_accuracy = 0.0
-    first_shot = True
-    for x, y in ds:
-        if first_shot:
-            ml.step(x, y, update=False)
-            first_shot = False
-            continue
+    # metrics_store.plot_meta()
 
-        output = ml.predictor(x)
-        good = int(torch.argmax(output, -1) == torch.argmax(y, -1))
-        if i == 0:
-            meta_accuracy = good
-            i += 1
-            continue
-        meta_accuracy = (i / (i + 1)) * meta_accuracy + good / (i + 1)
-        i += 1
-    print(f'[meta accuracy]: {meta_accuracy * 100:.1f}%')
-    """
-
-    metrics_store.plot_meta()
-
-    return meta
+    return ml
 
 
 if __name__ == '__main__':
@@ -170,5 +149,10 @@ if __name__ == '__main__':
     data = dataset.MNIST(batch_size, utils.DEVICE)
     metrics_store = visualisation.TrainingStore()
 
-    train(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
-    # train_predictor_alone(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
+    meta_model = train(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
+    linear_model = train_predictor_alone(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
+
+    wa = visualisation.WeightsAnalyser()
+    wa.add((meta_model.flatten_parameters(), 'meta'))
+    wa.add((utils.get_parameters(linear_model), 'regular'))
+    wa.plot()

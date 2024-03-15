@@ -31,6 +31,10 @@ def get_number_parameters(model: torch.nn.Module) -> int:
     return sum([torch.numel(p) for p in model.parameters()])
 
 
+def get_parameters(model: torch.nn.Module) -> np.ndarray:
+    return np.concatenate([p.data.cpu().numpy().flatten() for p in model.parameters()])
+
+
 def get_device():
     if traced():
         return 'cpu'
