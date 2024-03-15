@@ -75,6 +75,15 @@ class MetaLoss(nn.Module):
         )
 
 
+class WideTanh(nn.Module):
+    def __init__(self, slope: float = .1):
+        super().__init__()
+        self._slope = slope
+
+    def forward(self, x):
+        return torch.tanh(x * self._slope)
+
+
 class Meta(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, output_size: int, lr: float = .1, momentum: float = .9):
         """
@@ -108,7 +117,7 @@ class Meta(nn.Module):
         self._rnn = nn.RNN(meta_learning_input_size, self._hidden_size, batch_first=True)
         self._hidden_state = torch.zeros(1, self._hidden_size, device=utils.DEVICE)
         self._fc = nn.Linear(self._hidden_size, meta_learning_output_size)
-        self._tanh = nn.Tanh()
+        self._tanh = WideTanh()
 
         self._loss = nn.MSELoss()
         self._optimizer = torch.optim.SGD(
@@ -122,6 +131,16 @@ class Meta(nn.Module):
         flat_parameters = []
         for n, p in self.named_parameters():
             if '_model' in n:
+                continue
+            p_shapes.append(p.size())
+            flat_parameters.append(p.flatten())
+        return torch.cat(flat_parameters)
+
+    def flatten_predictor_parameters(self):
+        p_shapes = []
+        flat_parameters = []
+        for n, p in self.named_parameters():
+            if '_model' not in n:
                 continue
             p_shapes.append(p.size())
             flat_parameters.append(p.flatten())

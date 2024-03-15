@@ -153,6 +153,6 @@ if __name__ == '__main__':
     linear_model = train_predictor_alone(data, epochs=epochs, iterations=iterations, lr=lr, momentum=momentum, store=metrics_store)
 
     wa = visualisation.WeightsAnalyser()
-    wa.add((meta_model.flatten_parameters(), 'meta'))
+    wa.add((meta_model.flatten_predictor_parameters(), 'meta'))
     wa.add((utils.get_parameters(linear_model), 'regular'))
     wa.plot()
